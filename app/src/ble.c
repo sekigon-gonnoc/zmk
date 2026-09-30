@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <zmk/esb_runtime/runtime.h>
 #include <zephyr/device.h>
 #include <zephyr/init.h>
 
@@ -175,6 +176,11 @@ bool zmk_ble_profile_is_connected(uint8_t index) {
     advertising_status = ZMK_ADV_CONN;
 
 int update_advertising(void) {
+#if IS_ENABLED(CONFIG_ZMK_ESB_RUNTIME_MODE_SWITCH)
+    if (zmk_esb_runtime_owns_radio()) {
+        return 0;
+    }
+#endif
     int err = 0;
     bt_addr_le_t *addr;
     struct bt_conn *conn;
@@ -218,6 +224,13 @@ int update_advertising(void) {
 
     return 0;
 };
+
+#if IS_ENABLED(CONFIG_ZMK_ESB_RUNTIME_MODE_SWITCH)
+int zmk_esb_runtime_ble_host_resume(void) {
+    advertising_status = ZMK_ADV_NONE;
+    return update_advertising();
+}
+#endif
 
 static void update_advertising_callback(struct k_work *work) { update_advertising(); }
 

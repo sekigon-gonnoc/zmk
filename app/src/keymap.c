@@ -4,6 +4,10 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <zmk/esb_runtime/runtime.h>
+#ifdef CONFIG_ZMK_ESB_RUNTIME_STUDIO_SYNC
+#include <zmk/esb_runtime/studio_zmk.h>
+#endif
 #include <drivers/behavior.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/settings/settings.h>
@@ -23,6 +27,20 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/sensor_event.h>
 
+#ifdef CONFIG_ZMK_ESB_RUNTIME_STUDIO_SYNC
+/* Keep the ordinary keymap implementation available behind the Studio bridge. */
+#define zmk_keymap_save_changes studio_native_zmk_keymap_save_changes
+#define zmk_keymap_reset_settings studio_native_zmk_keymap_reset_settings
+#define zmk_keymap_discard_changes studio_native_zmk_keymap_discard_changes
+#define zmk_keymap_check_unsaved_changes studio_native_zmk_keymap_check_unsaved_changes
+#define zmk_keymap_set_layer_binding_at_idx studio_original_zmk_keymap_set_layer_binding_at_idx
+#define zmk_keymap_move_layer studio_original_zmk_keymap_move_layer
+#define zmk_keymap_add_layer studio_original_zmk_keymap_add_layer
+#define zmk_keymap_remove_layer studio_original_zmk_keymap_remove_layer
+#define zmk_keymap_restore_layer studio_original_zmk_keymap_restore_layer
+#define zmk_keymap_set_layer_name studio_original_zmk_keymap_set_layer_name
+#endif
+
 static zmk_keymap_layers_state_t _zmk_keymap_layer_locks = 0;
 static zmk_keymap_layers_state_t _zmk_keymap_layer_state = 0;
 static zmk_keymap_layer_id_t _zmk_keymap_layer_default = 0;
@@ -36,9 +54,11 @@ static zmk_keymap_layer_id_t _zmk_keymap_layer_default = 0;
 #endif
 
 #define TRANSFORMED_LAYER(node)                                                                    \
-    {COND_CODE_1(DT_NODE_HAS_PROP(node, bindings),                                                 \
-                 (LISTIFY(DT_PROP_LEN(node, bindings), ZMK_KEYMAP_EXTRACT_BINDING, (, ), node)),   \
-                 ())}
+    {                                                                                              \
+        COND_CODE_1(                                                                               \
+            DT_NODE_HAS_PROP(node, bindings),                                                      \
+            (LISTIFY(DT_PROP_LEN(node, bindings), ZMK_KEYMAP_EXTRACT_BINDING, (, ), node)), ())    \
+    }
 
 #if ZMK_KEYMAP_HAS_SENSORS
 #define _TRANSFORM_SENSOR_ENTRY(idx, layer)                                                        \
@@ -559,7 +579,7 @@ static int save_layer_names(void) {
             char setting_name[14];
             sprintf(setting_name, LAYER_NAME_SETTINGS_KEY, id);
             int ret = settings_save_one(setting_name, zmk_keymap_layer_names[id],
-                                        strlen(zmk_keymap_layer_names[id]));
+                                        MAX(1, strlen(zmk_keymap_layer_names[id])));
             if (ret < 0) {
                 return ret;
             }
@@ -598,6 +618,7 @@ static void load_stock_keymap_layer_ordering() {
     DT_INST_FOREACH_CHILD_STATUS_OKAY(0, KEYMAP_LAYER_ORDER_INIT)
     while (i < ZMK_KEYMAP_LAYERS_LEN) {
         keymap_layer_orders[i] = ZMK_KEYMAP_LAYER_ID_INVAL;
+        settings_layer_orders[i] = ZMK_KEYMAP_LAYER_ID_INVAL;
         i++;
     }
 }
@@ -815,6 +836,11 @@ int zmk_keymap_sensor_event(uint8_t sensor_index,
 #endif /* ZMK_KEYMAP_HAS_SENSORS */
 
 int keymap_listener(const zmk_event_t *eh) {
+#if IS_ENABLED(CONFIG_ZMK_ESB_RUNTIME_MODE_SWITCH)
+    if (zmk_esb_runtime_owns_radio()) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+#endif
     const struct zmk_position_state_changed *pos_ev;
     if ((pos_ev = as_zmk_position_state_changed(eh)) != NULL) {
         return zmk_keymap_position_state_changed(pos_ev->source, pos_ev->position, pos_ev->state,
@@ -981,3 +1007,17 @@ int keymap_init(void) {
 }
 
 SYS_INIT(keymap_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
+
+#ifdef CONFIG_ZMK_ESB_RUNTIME_STUDIO_SYNC
+#undef zmk_keymap_save_changes
+#undef zmk_keymap_reset_settings
+#undef zmk_keymap_discard_changes
+#undef zmk_keymap_check_unsaved_changes
+#undef zmk_keymap_set_layer_binding_at_idx
+#undef zmk_keymap_move_layer
+#undef zmk_keymap_add_layer
+#undef zmk_keymap_remove_layer
+#undef zmk_keymap_restore_layer
+#undef zmk_keymap_set_layer_name
+#include "studio_keymap.inc"
+#endif

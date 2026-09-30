@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <zmk/esb_runtime/runtime.h>
 #include <zephyr/types.h>
 #include <zephyr/init.h>
 
@@ -883,6 +884,11 @@ static void split_central_device_found(const bt_addr_le_t *addr, int8_t rssi, ui
 }
 
 static int start_scanning(void) {
+#if IS_ENABLED(CONFIG_ZMK_ESB_RUNTIME_MODE_SWITCH)
+    if (zmk_esb_runtime_owns_radio()) {
+        return 0;
+    }
+#endif
     if (!is_enabled) {
         LOG_DBG("Not scanning, we're disabled");
         return 0;
@@ -1226,6 +1232,13 @@ static int split_central_bt_set_enabled(bool enabled) {
         return 0;
     }
 }
+
+#if IS_ENABLED(CONFIG_ZMK_ESB_RUNTIME_MODE_SWITCH)
+int zmk_esb_runtime_ble_split_resume(void) {
+    is_scanning = false;
+    return split_central_bt_set_enabled(true);
+}
+#endif
 
 static int
 split_central_bt_set_status_callback(zmk_split_transport_central_status_changed_cb_t cb) {

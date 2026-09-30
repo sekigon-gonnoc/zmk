@@ -431,7 +431,11 @@ int zmk_physical_layouts_save_selected(void) {
 #if IS_ENABLED(CONFIG_SETTINGS)
     uint8_t val = (uint8_t)zmk_physical_layouts_get_selected();
 
-    return settings_save_one("physical_layouts/selected", &val, sizeof(val));
+    int err = settings_save_one("physical_layouts/selected", &val, sizeof(val));
+    if (!err) {
+        saved_selected_index = val;
+    }
+    return err;
 #else
     return -ENOTSUP;
 #endif
