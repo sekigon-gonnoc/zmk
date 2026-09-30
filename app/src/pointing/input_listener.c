@@ -1,3 +1,4 @@
+#include <zmk/esb_runtime/runtime.h>
 /*
  * Copyright (c) 2024 The ZMK Contributors
  *
@@ -273,6 +274,12 @@ static void apply_resolution_scaling(struct input_listener_data *data, struct in
 
 static void input_handler(const struct input_listener_config *config,
                           struct input_listener_data *data, struct input_event *evt) {
+#if IS_ENABLED(CONFIG_ZMK_ESB_RUNTIME_MODE_SWITCH)
+    if (zmk_esb_runtime_owns_radio()) {
+        zmk_esb_runtime_input(config->listener_index, evt);
+        return;
+    }
+#endif
     // First, process to update the event data as needed.
     int ret = filter_with_input_config(config, data, evt);
 
@@ -361,10 +368,12 @@ static void input_handler(const struct input_listener_config *config,
     }
 
 #define IL_EXTRACT_DATA(n, id, scope)                                                              \
-    {COND_CODE_1(DT_NODE_HAS_PROP(n, input_processors),                                            \
-                 (.remainders_len = PROCESSOR_REM_TRACKERS(n),                                     \
-                  .remainders = _CONCAT(input_processor_remainders_##id, scope), ),                \
-                 ())}
+    {                                                                                              \
+        COND_CODE_1(DT_NODE_HAS_PROP(n, input_processors),                                         \
+                    (.remainders_len = PROCESSOR_REM_TRACKERS(n),                                  \
+                     .remainders = _CONCAT(input_processor_remainders_##id, scope), ),             \
+                    ())                                                                            \
+    }
 
 #define IL_ONE(...) +1
 

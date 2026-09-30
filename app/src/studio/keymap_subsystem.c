@@ -15,6 +15,9 @@ LOG_MODULE_DECLARE(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 #include <zmk/keymap.h>
 #include <zmk/studio/rpc.h>
 #include <zmk/physical_layouts.h>
+#ifdef CONFIG_ZMK_ESB_RUNTIME_STUDIO_SYNC
+#include <zmk/esb_runtime/studio_zmk.h>
+#endif
 
 #include <pb_encode.h>
 
@@ -202,7 +205,11 @@ zmk_studio_Response save_changes(const zmk_studio_Request *req) {
     resp.result.ok = true;
 
     LOG_DBG("");
+#ifdef CONFIG_ZMK_ESB_RUNTIME_STUDIO_SYNC
+    int ret = 0; /* Saved by esbr_studio_save(). */
+#else
     int ret = zmk_physical_layouts_save_selected();
+#endif
 
     if (ret < 0) {
         LOG_WRN("Failed to save selected physical layout (%d)", ret);
@@ -225,7 +232,11 @@ zmk_studio_Response save_changes(const zmk_studio_Request *req) {
 
 zmk_studio_Response discard_changes(const zmk_studio_Request *req) {
     LOG_DBG("");
+#ifdef CONFIG_ZMK_ESB_RUNTIME_STUDIO_SYNC
+    int ret = 0; /* Reverted by esbr_studio_discard(). */
+#else
     int ret = zmk_physical_layouts_revert_selected();
+#endif
     if (ret < 0) {
         return ZMK_RPC_SIMPLE_ERR(GENERIC);
     }
@@ -345,7 +356,11 @@ zmk_studio_Response set_active_physical_layout(const zmk_studio_Request *req) {
         return KEYMAP_RESPONSE(set_active_physical_layout, resp);
     }
 
+#ifdef CONFIG_ZMK_ESB_RUNTIME_STUDIO_SYNC
+    int ret = esbr_studio_select_layout(index);
+#else
     int ret = zmk_physical_layouts_select(index);
+#endif
     if (ret < 0) {
         resp.which_result = zmk_keymap_SetActivePhysicalLayoutResponse_err_tag;
         resp.result.err =
