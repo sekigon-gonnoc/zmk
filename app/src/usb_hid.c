@@ -11,12 +11,12 @@
 #include <zephyr/usb/class/usb_hid.h>
 
 #ifdef CONFIG_ZMK_ESB_RUNTIME
-#define ESBR_USB_KEY_REPORT
+#define ESBR_USB_FEATURE_REPORT
 #endif
 #include <zmk/usb.h>
 #include <zmk/hid.h>
 #ifdef CONFIG_ZMK_ESB_RUNTIME
-#include <zmk/esb_runtime/key_provision.h>
+#include <zmk/esb_runtime/hid_feature_report.h>
 #endif
 #include <zmk/keymap.h>
 
@@ -72,14 +72,14 @@ static int get_report_cb(const struct device *dev, struct usb_setup_packet *setu
     case HID_REPORT_TYPE_FEATURE:
         switch (setup->wValue & HID_GET_REPORT_ID_MASK) {
 #ifdef CONFIG_ZMK_ESB_RUNTIME
-        case ZMK_HID_REPORT_ID_ESBR_KEY: {
-            static uint8_t key_report[ESBR_KEY_HID_REPORT_SIZE];
-            int rc = esbr_key_provision_get(key_report);
+        case ZMK_HID_REPORT_ID_ESBR_FEATURE: {
+            static uint8_t feature_report[ESBR_HID_FEATURE_REPORT_SIZE];
+            int rc = esbr_hid_feature_report_get(feature_report);
             if (rc) {
                 return rc;
             }
-            *len = sizeof(key_report);
-            *data = key_report;
+            *len = sizeof(feature_report);
+            *data = feature_report;
             break;
         }
 #endif
@@ -143,8 +143,8 @@ static int set_report_cb(const struct device *dev, struct usb_setup_packet *setu
     case HID_REPORT_TYPE_FEATURE:
         switch (setup->wValue & HID_GET_REPORT_ID_MASK) {
 #ifdef CONFIG_ZMK_ESB_RUNTIME
-        case ZMK_HID_REPORT_ID_ESBR_KEY:
-            return esbr_key_provision_set(*data, *len);
+        case ZMK_HID_REPORT_ID_ESBR_FEATURE:
+            return esbr_hid_feature_report_set(*data, *len);
 #endif
 #if IS_ENABLED(CONFIG_ZMK_POINTING_SMOOTH_SCROLLING)
         case ZMK_HID_REPORT_ID_MOUSE:
