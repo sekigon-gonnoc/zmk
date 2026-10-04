@@ -87,6 +87,11 @@ struct zmk_endpoint_instance zmk_endpoint_get_preferred(void);
  */
 struct zmk_endpoint_instance zmk_endpoint_get_selected(void);
 
+/* Compatibility for modules using the endpoint API before its rename. */
+static inline struct zmk_endpoint_instance zmk_endpoints_selected(void) {
+    return zmk_endpoint_get_selected();
+}
+
 /**
  * Returns whether the keyboard is connected to an endpoint.
  *
