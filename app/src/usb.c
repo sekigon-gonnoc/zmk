@@ -55,9 +55,10 @@ bool zmk_usb_is_hid_ready(void) {
 }
 
 void usb_status_cb(enum usb_dc_status_code status, const uint8_t *params) {
-    // Start-of-frame events are too frequent and noisy to notify, and they're
-    // not used within ZMK
-    if (status == USB_DC_SOF) {
+    // Start-of-frame and interface selection events do not change ZMK's USB
+    // connection state. In particular, UAC alternate setting changes must not
+    // make the configured HID/RPC endpoint appear disconnected.
+    if (status == USB_DC_SOF || status == USB_DC_INTERFACE) {
         return;
     }
 
