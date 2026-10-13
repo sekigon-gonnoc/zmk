@@ -21,11 +21,17 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/matrix.h>
 #include <zmk/sensors.h>
 #include <zmk/virtual_key_position.h>
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_ENCODER)
+#include <zmk/esbr_runtime_encoder/encoder.h>
+#endif
 
 #include <zmk/event_manager.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/sensor_event.h>
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_TAP_DANCE)
+#include <zmk/esbr_runtime_tap_dance/tap_dance.h>
+#endif
 
 #ifdef CONFIG_ZMK_ESB_RUNTIME_STUDIO_SYNC
 /* Keep the ordinary keymap implementation available behind the Studio bridge. */
@@ -786,6 +792,9 @@ int zmk_keymap_sensor_event(uint8_t sensor_index,
         }
 
         struct zmk_behavior_binding *binding = &zmk_sensor_keymap[layer_id][sensor_index];
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_ENCODER)
+        binding = esbr_encoder_lookup(sensor_index, layer_id, binding);
+#endif
 
         LOG_DBG("layer idx: %d, layer id: %d sensor_index: %d, binding name: %s", layer_idx,
                 layer_id, sensor_index, binding->behavior_dev ? binding->behavior_dev : "(null)");
@@ -843,6 +852,11 @@ int keymap_listener(const zmk_event_t *eh) {
 #endif
     const struct zmk_position_state_changed *pos_ev;
     if ((pos_ev = as_zmk_position_state_changed(eh)) != NULL) {
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_TAP_DANCE)
+        if (pos_ev->state) {
+            esbr_tap_dance_position_interrupt(pos_ev->source, pos_ev->position, pos_ev->timestamp);
+        }
+#endif
         return zmk_keymap_position_state_changed(pos_ev->source, pos_ev->position, pos_ev->state,
                                                  pos_ev->timestamp);
     }

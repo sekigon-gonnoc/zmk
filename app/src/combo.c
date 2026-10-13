@@ -23,9 +23,16 @@
 #include <zmk/keymap.h>
 #include <zmk/virtual_key_position.h>
 
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#include <zmk/esbr_runtime_combo/combo.h>
+#endif
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_TAP_DANCE)
+#include <zmk/esbr_runtime_tap_dance/tap_dance.h>
+#endif
+
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) || IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
 
 #if CONFIG_ZMK_COMBO_MAX_KEYS_PER_COMBO > 0
 
@@ -40,10 +47,16 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #endif
 
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#define MAX_COMBO_KEYS ZMK_ESBR_RUNTIME_COMBO_MAX_POSITIONS
+#define COMBO_COUNT ZMK_ESBR_RUNTIME_COMBO_MAX_SLOTS
+#define BYTES_FOR_COMBOS_MASK 1
+#else
 #define COMBOS_KEYS_BYTE_ARRAY(node_id)                                                            \
     uint8_t _CONCAT(combo_prop_, node_id)[DT_PROP_LEN(node_id, key_positions)];
 
 #define MAX_COMBO_KEYS sizeof(union {DT_INST_FOREACH_CHILD(0, COMBOS_KEYS_BYTE_ARRAY)})
+#endif
 
 struct combo_cfg {
     int32_t key_positions[MAX_COMBO_KEYS];
@@ -97,15 +110,28 @@ struct active_combo {
 // Doing so allows our bitmasks to be "shorted key positions list first" when searching for matches.
 // `20` is chosen as a reasonable limit, since the theoretical maximum number of keys you might
 // reasonably press simultaneously with 10 fingers is 20 keys, two keys per finger.
-static const struct combo_cfg combos[] = {
-    LISTIFY(20, COMBO_CONFIGS_WITH_MATCHING_POSITIONS_LEN, (), 0)};
-
 #define COMBO_ONE(n) +1
 
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
 #define COMBO_CHILDREN_COUNT (0 DT_INST_FOREACH_CHILD(0, COMBO_ONE))
+#else
+#define COMBO_CHILDREN_COUNT 0
+#endif
+
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+BUILD_ASSERT(COMBO_CHILDREN_COUNT == 0, "Runtime Combo cannot be combined with static ZMK combos");
+static struct combo_cfg combos[COMBO_COUNT];
+#define COMBO_TOTAL_COUNT COMBO_COUNT
+#else
+static const struct combo_cfg combos[] = {
+    LISTIFY(20, COMBO_CONFIGS_WITH_MATCHING_POSITIONS_LEN, (), 0)};
+#define COMBO_TOTAL_COUNT ARRAY_SIZE(combos)
+#endif
 
 // We need at least 4 bytes to avoid alignment issues
-#define BYTES_FOR_COMBOS_MASK DIV_ROUND_UP(COMBO_CHILDREN_COUNT, 32)
+#if !IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#define BYTES_FOR_COMBOS_MASK MAX(1, DIV_ROUND_UP(COMBO_CHILDREN_COUNT, 32))
+#endif
 
 uint8_t pressed_keys_count = 0;
 // set of keys pressed
@@ -135,6 +161,54 @@ static void store_last_tapped(int64_t timestamp) {
     }
 }
 
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+static void refresh_runtime_combos(void) {
+    for (uint8_t i = 0; i < COMBO_COUNT; i++) {
+        struct esbr_runtime_combo_config config;
+        if (esbr_combo_slot_get(i, &config) != 0 || !config.enabled) {
+            combos[i] = (struct combo_cfg){0};
+            continue;
+        }
+        combos[i] = (struct combo_cfg){
+            .key_position_len = config.count,
+            .require_prior_idle_ms = 0,
+            .timeout_ms = config.timeout_ms,
+            .layer_mask = config.layer_mask,
+            .behavior = config.binding,
+            .slow_release = config.release_mode == 1,
+        };
+        for (uint8_t position = 0; position < config.count; position++) {
+            combos[i].key_positions[position] = config.positions[position];
+        }
+    }
+}
+
+static bool runtime_combo_contains(const struct combo_cfg *combo, int32_t position) {
+    for (int i = 0; i < combo->key_position_len; i++) {
+        if (combo->key_positions[i] == position) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void runtime_combo_sync_busy(void) {
+    bool busy[COMBO_COUNT] = {0};
+    for (uint8_t i = 0; i < COMBO_COUNT; i++) {
+        busy[i] = sys_bitfield_test_bit((mem_addr_t)&candidates, i);
+    }
+    for (uint8_t i = 0; i < active_combo_count; i++) {
+        const uint16_t combo_idx = active_combos[i].combo_idx;
+        if (combo_idx < COMBO_COUNT) {
+            busy[combo_idx] = true;
+        }
+    }
+    for (uint8_t i = 0; i < COMBO_COUNT; i++) {
+        esbr_combo_slot_set_busy(i, busy[i]);
+    }
+}
+#endif
+
 // Store the combo key pointer in the combos array, one pointer for each key position
 // The combos are sorted shortest-first, then by virtual-key-position.
 static int initialize_combo(size_t index) {
@@ -163,7 +237,17 @@ static int setup_candidates_for_first_keypress(int32_t position, int64_t timesta
     int number_of_combo_candidates = 0;
     uint8_t highest_active_layer = zmk_keymap_highest_layer_active();
 
-    for (size_t i = 0; i < ARRAY_SIZE(combos); i++) {
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+    for (size_t i = 0; i < COMBO_TOTAL_COUNT; i++) {
+        const struct combo_cfg *combo = &combos[i];
+        if (runtime_combo_contains(combo, position) &&
+            combo_active_on_layer(combo, highest_active_layer) && !is_quick_tap(combo, timestamp)) {
+            sys_bitfield_set_bit((mem_addr_t)&candidates, i);
+            number_of_combo_candidates++;
+        }
+    }
+#else
+    for (size_t i = 0; i < COMBO_TOTAL_COUNT; i++) {
         if (sys_bitfield_test_bit((mem_addr_t)&combo_lookup[position], i)) {
             const struct combo_cfg *combo = &combos[i];
             if (combo_active_on_layer(combo, highest_active_layer) &&
@@ -174,6 +258,7 @@ static int setup_candidates_for_first_keypress(int32_t position, int64_t timesta
             // LOG_DBG("combo timeout %d %d %d", position, i, candidates[i].timeout_at);
         }
     }
+#endif
 
     return number_of_combo_candidates;
 }
@@ -190,12 +275,25 @@ static inline uint8_t zero_one_or_more_bits(uint32_t field) {
 
 static int filter_candidates(int32_t position) {
     int matches = 0;
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+    for (size_t i = 0; i < COMBO_TOTAL_COUNT; i++) {
+        if (!sys_bitfield_test_bit((mem_addr_t)&candidates, i)) {
+            continue;
+        }
+        if (!runtime_combo_contains(&combos[i], position)) {
+            sys_bitfield_clear_bit((mem_addr_t)&candidates, i);
+        } else if (matches < 2) {
+            matches++;
+        }
+    }
+#else
     for (int i = 0; i < BYTES_FOR_COMBOS_MASK; i++) {
         candidates[i] &= combo_lookup[position][i];
         if (matches < 2) {
             matches += zero_one_or_more_bits(candidates[i]);
         }
     }
+#endif
 
     LOG_DBG("combo matches after filter %d", matches);
     return matches;
@@ -207,7 +305,7 @@ static int64_t first_candidate_timeout() {
     }
 
     int64_t first_timeout = LONG_MAX;
-    for (int i = 0; i < ARRAY_SIZE(combos); i++) {
+    for (int i = 0; i < COMBO_TOTAL_COUNT; i++) {
         if (sys_bitfield_test_bit((mem_addr_t)&candidates, i)) {
             first_timeout = MIN(first_timeout, combos[i].timeout_ms);
         }
@@ -231,7 +329,7 @@ static int filter_timed_out_candidates(int64_t timestamp) {
     __ASSERT(pressed_keys_count > 0, "Searching for a candidate timeout with no keys pressed");
 
     int remaining_candidates = 0;
-    for (int i = 0; i < ARRAY_SIZE(combos); i++) {
+    for (int i = 0; i < COMBO_TOTAL_COUNT; i++) {
         if (sys_bitfield_test_bit((mem_addr_t)&candidates, i)) {
 
             if (pressed_keys[0].data.timestamp + combos[i].timeout_ms > timestamp) {
@@ -400,7 +498,11 @@ static int cleanup() {
         activate_combo(fully_pressed_combo);
         fully_pressed_combo = INT16_MAX;
     }
-    return release_pressed_keys();
+    int released = release_pressed_keys();
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+    runtime_combo_sync_busy();
+#endif
+    return released;
 }
 
 static void update_timeout_task() {
@@ -420,6 +522,9 @@ static void update_timeout_task() {
 
 static int position_state_down(const zmk_event_t *ev, struct zmk_position_state_changed *data) {
     int num_candidates;
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+    refresh_runtime_combos();
+#endif
     if (!pressed_keys_count) {
         num_candidates = setup_candidates_for_first_keypress(data->position, data->timestamp);
         if (num_candidates == 0) {
@@ -433,9 +538,12 @@ static int position_state_down(const zmk_event_t *ev, struct zmk_position_state_
     LOG_DBG("combo: capturing position event %d", data->position);
     int ret = capture_pressed_key(data);
     update_timeout_task();
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+    runtime_combo_sync_busy();
+#endif
 
     if (num_candidates) {
-        for (int i = 0; i < ARRAY_SIZE(combos); i++) {
+        for (int i = 0; i < COMBO_TOTAL_COUNT; i++) {
             if (sys_bitfield_test_bit((mem_addr_t)&candidates, i)) {
                 const struct combo_cfg *candidate_combo = &combos[i];
                 if (candidate_is_completely_pressed(candidate_combo)) {
@@ -459,6 +567,9 @@ static int position_state_down(const zmk_event_t *ev, struct zmk_position_state_
 static int position_state_up(const zmk_event_t *ev, struct zmk_position_state_changed *data) {
     int released_keys = cleanup();
     if (release_combo_key(data->position, data->timestamp)) {
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+        runtime_combo_sync_busy();
+#endif
         return ZMK_EV_EVENT_HANDLED;
     }
     if (released_keys > 1) {
@@ -481,6 +592,9 @@ static void combo_timeout_handler(struct k_work *item) {
         LOG_DBG("CLEANUP!");
         cleanup();
     }
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+    runtime_combo_sync_busy();
+#endif
 
     LOG_DBG("ABOUT TO UPDATE IN TIMEOUT");
     update_timeout_task();
@@ -491,6 +605,12 @@ static int position_state_changed_listener(const zmk_event_t *ev) {
     if (data == NULL) {
         return ZMK_EV_EVENT_BUBBLE;
     }
+
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_TAP_DANCE)
+    if (data->state) {
+        esbr_tap_dance_position_interrupt(data->source, data->position, data->timestamp);
+    }
+#endif
 
     if (data->state) { // keydown
         return position_state_down(ev, data);
@@ -526,10 +646,15 @@ static int combo_init(void) {
     }
 
     k_work_init_delayable(&timeout_task, combo_timeout_handler);
-    LOG_WRN("Have %d combos!", ARRAY_SIZE(combos));
-    for (int i = 0; i < ARRAY_SIZE(combos); i++) {
+    LOG_WRN("Have %d combos!", COMBO_TOTAL_COUNT);
+#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+    refresh_runtime_combos();
+    runtime_combo_sync_busy();
+#else
+    for (int i = 0; i < COMBO_TOTAL_COUNT; i++) {
         initialize_combo(i);
     }
+#endif
     return 0;
 }
 
