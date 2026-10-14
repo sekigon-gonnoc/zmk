@@ -15,6 +15,9 @@
 #endif
 #include <zmk/usb.h>
 #include <zmk/hid.h>
+#if IS_ENABLED(CONFIG_ZMK_DEV_DEBUG_HID)
+#include <zmk/dev_debug/hid.h>
+#endif
 #ifdef CONFIG_ZMK_ESB_RUNTIME
 #include <zmk/esb_runtime/hid_feature_report.h>
 #endif
@@ -71,6 +74,18 @@ static int get_report_cb(const struct device *dev, struct usb_setup_packet *setu
     switch (setup->wValue & HID_GET_REPORT_TYPE_MASK) {
     case HID_REPORT_TYPE_FEATURE:
         switch (setup->wValue & HID_GET_REPORT_ID_MASK) {
+#if IS_ENABLED(CONFIG_ZMK_DEV_DEBUG_HID)
+        case ZMK_HID_REPORT_ID_DEV_DEBUG: {
+            static uint8_t debug_report[ZMK_DEV_DEBUG_HID_REPORT_SIZE];
+            int rc = zmk_dev_debug_hid_get_report(debug_report, sizeof(debug_report));
+            if (rc) {
+                return rc;
+            }
+            *len = sizeof(debug_report);
+            *data = debug_report;
+            break;
+        }
+#endif
 #ifdef CONFIG_ZMK_ESB_RUNTIME
         case ZMK_HID_REPORT_ID_ESBR_FEATURE: {
             static uint8_t feature_report[ESBR_HID_FEATURE_REPORT_SIZE];
@@ -142,6 +157,10 @@ static int set_report_cb(const struct device *dev, struct usb_setup_packet *setu
     switch (setup->wValue & HID_GET_REPORT_TYPE_MASK) {
     case HID_REPORT_TYPE_FEATURE:
         switch (setup->wValue & HID_GET_REPORT_ID_MASK) {
+#if IS_ENABLED(CONFIG_ZMK_DEV_DEBUG_HID)
+        case ZMK_HID_REPORT_ID_DEV_DEBUG:
+            return zmk_dev_debug_hid_set_report(*data, *len);
+#endif
 #ifdef CONFIG_ZMK_ESB_RUNTIME
         case ZMK_HID_REPORT_ID_ESBR_FEATURE:
             return esbr_hid_feature_report_set(*data, *len);
