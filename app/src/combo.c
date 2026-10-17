@@ -23,16 +23,16 @@
 #include <zmk/keymap.h>
 #include <zmk/virtual_key_position.h>
 
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
-#include <zmk/esbr_runtime_combo/combo.h>
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
+#include <zmk/dynamic_combo/combo.h>
 #endif
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_TAP_DANCE)
-#include <zmk/esbr_runtime_tap_dance/tap_dance.h>
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_TAP_DANCE)
+#include <zmk/dynamic_tap_dance/tap_dance.h>
 #endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) || IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) || IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
 
 #if CONFIG_ZMK_COMBO_MAX_KEYS_PER_COMBO > 0
 
@@ -47,9 +47,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #endif
 
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
-#define MAX_COMBO_KEYS ZMK_ESBR_RUNTIME_COMBO_MAX_POSITIONS
-#define COMBO_COUNT ZMK_ESBR_RUNTIME_COMBO_MAX_SLOTS
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
+#define MAX_COMBO_KEYS ZMK_DYNAMIC_COMBO_MAX_POSITIONS
+#define COMBO_COUNT ZMK_DYNAMIC_COMBO_MAX_SLOTS
 #define BYTES_FOR_COMBOS_MASK 1
 #else
 #define COMBOS_KEYS_BYTE_ARRAY(node_id)                                                            \
@@ -118,7 +118,7 @@ struct active_combo {
 #define COMBO_CHILDREN_COUNT 0
 #endif
 
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
 BUILD_ASSERT(COMBO_CHILDREN_COUNT == 0, "Runtime Combo cannot be combined with static ZMK combos");
 static struct combo_cfg combos[COMBO_COUNT];
 #define COMBO_TOTAL_COUNT COMBO_COUNT
@@ -129,7 +129,7 @@ static const struct combo_cfg combos[] = {
 #endif
 
 // We need at least 4 bytes to avoid alignment issues
-#if !IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#if !IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
 #define BYTES_FOR_COMBOS_MASK MAX(1, DIV_ROUND_UP(COMBO_CHILDREN_COUNT, 32))
 #endif
 
@@ -161,11 +161,11 @@ static void store_last_tapped(int64_t timestamp) {
     }
 }
 
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
 static void refresh_runtime_combos(void) {
     for (uint8_t i = 0; i < COMBO_COUNT; i++) {
-        struct esbr_runtime_combo_config config;
-        if (esbr_combo_slot_get(i, &config) != 0 || !config.enabled) {
+        struct dynamic_combo_config config;
+        if (dynamic_combo_slot_get(i, &config) != 0 || !config.enabled) {
             combos[i] = (struct combo_cfg){0};
             continue;
         }
@@ -204,7 +204,7 @@ static void runtime_combo_sync_busy(void) {
         }
     }
     for (uint8_t i = 0; i < COMBO_COUNT; i++) {
-        esbr_combo_slot_set_busy(i, busy[i]);
+        dynamic_combo_slot_set_busy(i, busy[i]);
     }
 }
 #endif
@@ -237,7 +237,7 @@ static int setup_candidates_for_first_keypress(int32_t position, int64_t timesta
     int number_of_combo_candidates = 0;
     uint8_t highest_active_layer = zmk_keymap_highest_layer_active();
 
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
     for (size_t i = 0; i < COMBO_TOTAL_COUNT; i++) {
         const struct combo_cfg *combo = &combos[i];
         if (runtime_combo_contains(combo, position) &&
@@ -275,7 +275,7 @@ static inline uint8_t zero_one_or_more_bits(uint32_t field) {
 
 static int filter_candidates(int32_t position) {
     int matches = 0;
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
     for (size_t i = 0; i < COMBO_TOTAL_COUNT; i++) {
         if (!sys_bitfield_test_bit((mem_addr_t)&candidates, i)) {
             continue;
@@ -499,7 +499,7 @@ static int cleanup() {
         fully_pressed_combo = INT16_MAX;
     }
     int released = release_pressed_keys();
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
     runtime_combo_sync_busy();
 #endif
     return released;
@@ -522,7 +522,7 @@ static void update_timeout_task() {
 
 static int position_state_down(const zmk_event_t *ev, struct zmk_position_state_changed *data) {
     int num_candidates;
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
     refresh_runtime_combos();
 #endif
     if (!pressed_keys_count) {
@@ -538,7 +538,7 @@ static int position_state_down(const zmk_event_t *ev, struct zmk_position_state_
     LOG_DBG("combo: capturing position event %d", data->position);
     int ret = capture_pressed_key(data);
     update_timeout_task();
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
     runtime_combo_sync_busy();
 #endif
 
@@ -567,7 +567,7 @@ static int position_state_down(const zmk_event_t *ev, struct zmk_position_state_
 static int position_state_up(const zmk_event_t *ev, struct zmk_position_state_changed *data) {
     int released_keys = cleanup();
     if (release_combo_key(data->position, data->timestamp)) {
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
         runtime_combo_sync_busy();
 #endif
         return ZMK_EV_EVENT_HANDLED;
@@ -592,7 +592,7 @@ static void combo_timeout_handler(struct k_work *item) {
         LOG_DBG("CLEANUP!");
         cleanup();
     }
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
     runtime_combo_sync_busy();
 #endif
 
@@ -606,9 +606,9 @@ static int position_state_changed_listener(const zmk_event_t *ev) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_TAP_DANCE)
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_TAP_DANCE)
     if (data->state) {
-        esbr_tap_dance_position_interrupt(data->source, data->position, data->timestamp);
+        dynamic_tap_dance_position_interrupt(data->source, data->position, data->timestamp);
     }
 #endif
 
@@ -647,7 +647,7 @@ static int combo_init(void) {
 
     k_work_init_delayable(&timeout_task, combo_timeout_handler);
     LOG_WRN("Have %d combos!", COMBO_TOTAL_COUNT);
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_COMBO)
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_COMBO)
     refresh_runtime_combos();
     runtime_combo_sync_busy();
 #else

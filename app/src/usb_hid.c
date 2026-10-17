@@ -10,16 +10,16 @@
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/class/usb_hid.h>
 
-#ifdef CONFIG_ZMK_ESB_RUNTIME
-#define ESBR_USB_FEATURE_REPORT
+#ifdef CONFIG_ZMK_NEMU_LINK
+#define NEMU_LINK_USB_FEATURE_REPORT
 #endif
 #include <zmk/usb.h>
 #include <zmk/hid.h>
 #if IS_ENABLED(CONFIG_ZMK_DEV_DEBUG_HID)
 #include <zmk/dev_debug/hid.h>
 #endif
-#ifdef CONFIG_ZMK_ESB_RUNTIME
-#include <zmk/esb_runtime/hid_feature_report.h>
+#ifdef CONFIG_ZMK_NEMU_LINK
+#include <zmk/nemu_link/hid_feature_report.h>
 #endif
 #include <zmk/keymap.h>
 
@@ -86,10 +86,10 @@ static int get_report_cb(const struct device *dev, struct usb_setup_packet *setu
             break;
         }
 #endif
-#ifdef CONFIG_ZMK_ESB_RUNTIME
-        case ZMK_HID_REPORT_ID_ESBR_FEATURE: {
-            static uint8_t feature_report[ESBR_HID_FEATURE_REPORT_SIZE];
-            int rc = esbr_hid_feature_report_get(feature_report);
+#ifdef CONFIG_ZMK_NEMU_LINK
+        case ZMK_HID_REPORT_ID_NEMU_LINK_FEATURE: {
+            static uint8_t feature_report[NEMU_LINK_HID_FEATURE_REPORT_SIZE];
+            int rc = nemu_link_hid_feature_report_get(feature_report);
             if (rc) {
                 return rc;
             }
@@ -161,9 +161,9 @@ static int set_report_cb(const struct device *dev, struct usb_setup_packet *setu
         case ZMK_HID_REPORT_ID_DEV_DEBUG:
             return zmk_dev_debug_hid_set_report(*data, *len);
 #endif
-#ifdef CONFIG_ZMK_ESB_RUNTIME
-        case ZMK_HID_REPORT_ID_ESBR_FEATURE:
-            return esbr_hid_feature_report_set(*data, *len);
+#ifdef CONFIG_ZMK_NEMU_LINK
+        case ZMK_HID_REPORT_ID_NEMU_LINK_FEATURE:
+            return nemu_link_hid_feature_report_set(*data, *len);
 #endif
 #if IS_ENABLED(CONFIG_ZMK_POINTING_SMOOTH_SCROLLING)
         case ZMK_HID_REPORT_ID_MOUSE:

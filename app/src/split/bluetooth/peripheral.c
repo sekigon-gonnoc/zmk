@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <zmk/esb_runtime/runtime.h>
+#include <zmk/nemu_link/control.h>
 #include <zephyr/device.h>
 #include <zephyr/init.h>
 
@@ -77,8 +77,8 @@ static bool low_duty_advertising = false;
 static bool enabled = false;
 
 static void advertising_cb(struct k_work *work) {
-#if IS_ENABLED(CONFIG_ZMK_ESB_RUNTIME_MODE_SWITCH)
-    if (zmk_esb_runtime_owns_radio()) {
+#if IS_ENABLED(CONFIG_ZMK_NEMU_LINK_MODE_SWITCH)
+    if (zmk_nemu_link_owns_radio()) {
         return;
     }
 #endif
@@ -202,8 +202,8 @@ static int split_peripheral_bt_set_enabled(bool en) {
     }
 }
 
-#if IS_ENABLED(CONFIG_ZMK_ESB_RUNTIME_MODE_SWITCH)
-int zmk_esb_runtime_ble_split_resume(void) { return split_peripheral_bt_set_enabled(true); }
+#if IS_ENABLED(CONFIG_ZMK_NEMU_LINK_MODE_SWITCH)
+int zmk_nemu_link_ble_split_resume(void) { return split_peripheral_bt_set_enabled(true); }
 #endif
 
 static void notify_transport_status(void);

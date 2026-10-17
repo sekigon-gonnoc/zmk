@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <zmk/esb_runtime/runtime.h>
+#include <zmk/nemu_link/control.h>
 #include <zephyr/types.h>
 #include <zephyr/init.h>
 
@@ -884,8 +884,8 @@ static void split_central_device_found(const bt_addr_le_t *addr, int8_t rssi, ui
 }
 
 static int start_scanning(void) {
-#if IS_ENABLED(CONFIG_ZMK_ESB_RUNTIME_MODE_SWITCH)
-    if (zmk_esb_runtime_owns_radio()) {
+#if IS_ENABLED(CONFIG_ZMK_NEMU_LINK_MODE_SWITCH)
+    if (zmk_nemu_link_owns_radio()) {
         return 0;
     }
 #endif
@@ -1233,8 +1233,8 @@ static int split_central_bt_set_enabled(bool enabled) {
     }
 }
 
-#if IS_ENABLED(CONFIG_ZMK_ESB_RUNTIME_MODE_SWITCH)
-int zmk_esb_runtime_ble_split_resume(void) {
+#if IS_ENABLED(CONFIG_ZMK_NEMU_LINK_MODE_SWITCH)
+int zmk_nemu_link_ble_split_resume(void) {
     is_scanning = false;
     return split_central_bt_set_enabled(true);
 }

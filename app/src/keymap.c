@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <zmk/esb_runtime/runtime.h>
-#ifdef CONFIG_ZMK_ESB_RUNTIME_STUDIO_SYNC
-#include <zmk/esb_runtime/studio_zmk.h>
+#include <zmk/nemu_link/control.h>
+#ifdef CONFIG_ZMK_NEMU_LINK_STUDIO_SYNC
+#include <zmk/nemu_link/studio_zmk.h>
 #endif
 #include <drivers/behavior.h>
 #include <zephyr/sys/util.h>
@@ -21,19 +21,19 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/matrix.h>
 #include <zmk/sensors.h>
 #include <zmk/virtual_key_position.h>
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_ENCODER)
-#include <zmk/esbr_runtime_encoder/encoder.h>
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_ENCODER)
+#include <zmk/dynamic_encoder/encoder.h>
 #endif
 
 #include <zmk/event_manager.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/sensor_event.h>
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_TAP_DANCE)
-#include <zmk/esbr_runtime_tap_dance/tap_dance.h>
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_TAP_DANCE)
+#include <zmk/dynamic_tap_dance/tap_dance.h>
 #endif
 
-#ifdef CONFIG_ZMK_ESB_RUNTIME_STUDIO_SYNC
+#ifdef CONFIG_ZMK_NEMU_LINK_STUDIO_SYNC
 /* Keep the ordinary keymap implementation available behind the Studio bridge. */
 #define zmk_keymap_save_changes studio_native_zmk_keymap_save_changes
 #define zmk_keymap_reset_settings studio_native_zmk_keymap_reset_settings
@@ -792,8 +792,8 @@ int zmk_keymap_sensor_event(uint8_t sensor_index,
         }
 
         struct zmk_behavior_binding *binding = &zmk_sensor_keymap[layer_id][sensor_index];
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_ENCODER)
-        binding = esbr_encoder_lookup(sensor_index, layer_id, binding);
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_ENCODER)
+        binding = dynamic_encoder_lookup(sensor_index, layer_id, binding);
 #endif
 
         LOG_DBG("layer idx: %d, layer id: %d sensor_index: %d, binding name: %s", layer_idx,
@@ -845,16 +845,17 @@ int zmk_keymap_sensor_event(uint8_t sensor_index,
 #endif /* ZMK_KEYMAP_HAS_SENSORS */
 
 int keymap_listener(const zmk_event_t *eh) {
-#if IS_ENABLED(CONFIG_ZMK_ESB_RUNTIME_MODE_SWITCH)
-    if (zmk_esb_runtime_owns_radio()) {
+#if IS_ENABLED(CONFIG_ZMK_NEMU_LINK_MODE_SWITCH)
+    if (zmk_nemu_link_owns_radio()) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 #endif
     const struct zmk_position_state_changed *pos_ev;
     if ((pos_ev = as_zmk_position_state_changed(eh)) != NULL) {
-#if IS_ENABLED(CONFIG_ZMK_ESBR_RUNTIME_TAP_DANCE)
+#if IS_ENABLED(CONFIG_ZMK_DYNAMIC_TAP_DANCE)
         if (pos_ev->state) {
-            esbr_tap_dance_position_interrupt(pos_ev->source, pos_ev->position, pos_ev->timestamp);
+            dynamic_tap_dance_position_interrupt(pos_ev->source, pos_ev->position,
+                                                 pos_ev->timestamp);
         }
 #endif
         return zmk_keymap_position_state_changed(pos_ev->source, pos_ev->position, pos_ev->state,
@@ -1022,7 +1023,7 @@ int keymap_init(void) {
 
 SYS_INIT(keymap_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
-#ifdef CONFIG_ZMK_ESB_RUNTIME_STUDIO_SYNC
+#ifdef CONFIG_ZMK_NEMU_LINK_STUDIO_SYNC
 #undef zmk_keymap_save_changes
 #undef zmk_keymap_reset_settings
 #undef zmk_keymap_discard_changes

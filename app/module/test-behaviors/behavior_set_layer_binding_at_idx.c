@@ -75,7 +75,7 @@ static int behavior_set_layer_binding_at_idx_init(const struct device *dev) {
 #define _TRANSFORM_ENTRY(idx, node) ZMK_KEYMAP_EXTRACT_BINDING(idx, node)
 
 #define TRANSFORMED_BINDINGS(node)                                                                 \
-    {LISTIFY(DT_INST_PROP_LEN(node, bindings), _TRANSFORM_ENTRY, (, ), DT_DRV_INST(node))}
+    { LISTIFY(DT_INST_PROP_LEN(node, bindings), _TRANSFORM_ENTRY, (, ), DT_DRV_INST(node)) }
 
 #define SET_LAYER_BINDING_AT_IDX_INST(n)                                                           \
     static struct behavior_set_layer_binding_at_idx_data                                           \
