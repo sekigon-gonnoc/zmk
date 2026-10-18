@@ -176,6 +176,13 @@ static pb_ostream_t pb_ostream_for_tx_buf(void *user_data) {
     return stream;
 }
 
+static void rpc_tx_put_framing_byte(uint8_t framing_byte, void *user_data) {
+    while (ring_buf_put(&rpc_tx_buf, &framing_byte, 1) != 1) {
+        selected_transport->tx_notify(&rpc_tx_buf, 0, false, user_data);
+        k_yield();
+    }
+}
+
 static int send_response(const zmk_studio_Response *resp) {
     k_mutex_lock(&rpc_transport_mutex, K_FOREVER);
 
@@ -188,7 +195,7 @@ static int send_response(const zmk_studio_Response *resp) {
     pb_ostream_t stream = pb_ostream_for_tx_buf(user_data);
 
     uint8_t framing_byte = FRAMING_SOF;
-    ring_buf_put(&rpc_tx_buf, &framing_byte, 1);
+    rpc_tx_put_framing_byte(framing_byte, user_data);
 
     selected_transport->tx_notify(&rpc_tx_buf, 1, false, user_data);
 
@@ -203,7 +210,7 @@ static int send_response(const zmk_studio_Response *resp) {
     }
 
     framing_byte = FRAMING_EOF;
-    ring_buf_put(&rpc_tx_buf, &framing_byte, 1);
+    rpc_tx_put_framing_byte(framing_byte, user_data);
 
     selected_transport->tx_notify(&rpc_tx_buf, 1, true, user_data);
 
