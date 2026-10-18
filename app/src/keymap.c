@@ -952,6 +952,8 @@ static int keymap_handle_set(const char *name, size_t len, settings_read_cb read
         if (!name) {
             LOG_WRN("Loaded device %d from settings but no device found by that local ID",
                     binding_setting.behavior_local_id);
+            /* Keep the compiled binding when a stored local ID is unknown. */
+            return 0;
         }
 
         zmk_keymap[layer][key_position] = (struct zmk_behavior_binding){
