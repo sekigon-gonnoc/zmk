@@ -793,7 +793,7 @@ int zmk_keymap_sensor_event(uint8_t sensor_index,
 
         struct zmk_behavior_binding *binding = &zmk_sensor_keymap[layer_id][sensor_index];
 #if IS_ENABLED(CONFIG_ZMK_DYNAMIC_ENCODER)
-        binding = dynamic_encoder_lookup(sensor_index, layer_id, binding);
+        binding = dynamic_sensor_binding_lookup(sensor_index, layer_id, binding);
 #endif
 
         LOG_DBG("layer idx: %d, layer id: %d sensor_index: %d, binding name: %s", layer_idx,

@@ -250,6 +250,7 @@ K_THREAD_DEFINE(studio_rpc_thread, CONFIG_ZMK_STUDIO_RPC_THREAD_STACK_SIZE, rpc_
                 NULL, K_LOWEST_APPLICATION_THREAD_PRIO, 0, 0);
 
 static void refresh_selected_transport(void) {
+#if !IS_ENABLED(CONFIG_ZMK_SPLIT) || IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
     enum zmk_transport transport = zmk_endpoint_get_selected().transport;
 
     k_mutex_lock(&rpc_transport_mutex, K_FOREVER);
@@ -284,6 +285,21 @@ static void refresh_selected_transport(void) {
 
 exit_refresh:
     k_mutex_unlock(&rpc_transport_mutex);
+#else
+    /* A split peripheral has one local Studio transport (normally USB CDC).
+     * It does not own the host endpoint selection used by the central. */
+    k_mutex_lock(&rpc_transport_mutex, K_FOREVER);
+    if (!selected_transport) {
+        STRUCT_SECTION_FOREACH(zmk_rpc_transport, t) {
+            selected_transport = t;
+            if (selected_transport->rx_start) {
+                selected_transport->rx_start();
+            }
+            break;
+        }
+    }
+    k_mutex_unlock(&rpc_transport_mutex);
+#endif
 }
 
 static int zmk_rpc_init(void) {
@@ -321,11 +337,13 @@ static int zmk_rpc_init(void) {
 SYS_INIT(zmk_rpc_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
 static int studio_rpc_listener_cb(const zmk_event_t *eh) {
+#if !IS_ENABLED(CONFIG_ZMK_SPLIT) || IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
     struct zmk_endpoint_changed *ep_changed = as_zmk_endpoint_changed(eh);
     if (ep_changed) {
         refresh_selected_transport();
         return ZMK_EV_EVENT_BUBBLE;
     }
+#endif
 
     struct zmk_studio_rpc_notification *rpc_notify = as_zmk_studio_rpc_notification(eh);
     if (rpc_notify) {
@@ -350,5 +368,7 @@ static int studio_rpc_listener_cb(const zmk_event_t *eh) {
 }
 
 ZMK_LISTENER(studio_rpc, studio_rpc_listener_cb);
+#if !IS_ENABLED(CONFIG_ZMK_SPLIT) || IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
 ZMK_SUBSCRIPTION(studio_rpc, zmk_endpoint_changed);
+#endif
 ZMK_SUBSCRIPTION(studio_rpc, zmk_studio_rpc_notification);
