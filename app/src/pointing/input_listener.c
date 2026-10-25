@@ -274,7 +274,7 @@ static void apply_resolution_scaling(struct input_listener_data *data, struct in
 
 static void input_handler(const struct input_listener_config *config,
                           struct input_listener_data *data, struct input_event *evt) {
-#if IS_ENABLED(CONFIG_ZMK_NEMU_LINK_MODE_SWITCH)
+#if IS_ENABLED(CONFIG_ZMK_NEMU_LINK_ROLE_PERIPHERAL)
     if (zmk_nemu_link_owns_radio()) {
         zmk_nemu_link_input(config->listener_index, evt);
         return;
