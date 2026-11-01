@@ -24,6 +24,9 @@ int main(void) {
 
 #if IS_ENABLED(CONFIG_SETTINGS)
     settings_subsys_init();
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_ID_TYPE_SETTINGS_TABLE)
+    settings_load_subtree("behavior");
+#endif
     settings_load();
 #endif
 
