@@ -1,0 +1,127 @@
+name: Sync upstream into nemu-link
+
+on:
+  push:
+    branches:
+      - nemu-link
+    paths:
+      - .github/workflows/upstream-sync.yml
+  schedule:
+    - cron: "0 10 * * 5" # Friday 19:00 JST
+  workflow_dispatch:
+
+concurrency:
+  group: upstream-sync-nemu-link
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync-and-build:
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/zmkfirmware/zmk-build-arm:4.1
+    timeout-minutes: 120
+    steps:
+      - name: Check out Torabo Tsuki LP config
+        uses: actions/checkout@v7
+        with:
+          repository: sekigon-gonnoc/zmk-keyboard-torabo-tsuki-lp
+          ref: nemu-link
+          path: config
+          persist-credentials: false
+
+      - name: Check out nemu-link
+        uses: actions/checkout@v7
+        with:
+          ref: nemu-link
+          path: candidate-zmk
+          fetch-depth: 0
+
+      - name: Merge upstream main
+        id: merge
+        working-directory: candidate-zmk
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/candidate-zmk"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/zmkfirmware/zmk.git
+          git fetch upstream main
+          previous_sha=$(git rev-parse HEAD)
+          git merge --no-edit --no-ff upstream/main
+          current_sha=$(git rev-parse HEAD)
+          if [ "$previous_sha" = "$current_sha" ]; then
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "updated=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "candidate_sha=$current_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Build all Torabo Tsuki LP targets
+        working-directory: ${{ github.workspace }}
+        env:
+          CANDIDATE_ZMK_SHA: ${{ steps.merge.outputs.candidate_sha }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+
+          manifest = Path("config/config/west.yml")
+          text = manifest.read_text()
+          pattern = r"(?m)^([ \t]*- name: zmk\n)([ \t]+url: )[^\n]+(\n[ \t]+revision: )[^\n]+"
+          replacement = (
+              r"\g<1>\g<2>file://" + str(Path("candidate-zmk").resolve())
+              + r"\g<3>" + os.environ["CANDIDATE_ZMK_SHA"]
+          )
+          updated, replacements = re.subn(pattern, replacement, text, count=1)
+          if replacements != 1:
+              raise SystemExit("Could not point the LP manifest at the candidate ZMK checkout")
+          manifest.write_text(updated)
+          PY
+          west init -l config --mf config/west.yml
+          west update --fetch-opt=--filter=tree:0
+          west zephyr-export
+          python3 - <<'PY'
+          from pathlib import Path
+          import shlex
+          import subprocess
+          import yaml
+
+          config_root = Path("config").resolve()
+          targets = yaml.safe_load(Path("config/build.yaml").read_text()).get("include", [])
+
+          for target in targets:
+              artifact = target.get("artifact-name") or (
+                  f"{target.get('shield', '').replace(' ', '+') + '-' if target.get('shield') else ''}"
+                  f"{target['board']}"
+              )
+              build_dir = Path("build") / artifact.replace("/", "-")
+              command = ["west", "build", "-s", "zmk/app", "-d", str(build_dir), "-p", "-b", target["board"]]
+              for snippet in str(target.get("snippet", "")).split():
+                  command.extend(["-S", snippet])
+              cmake_args = [
+                  f"-DZMK_CONFIG={config_root / 'config'}",
+                  f"-DZMK_EXTRA_MODULES={config_root}",
+              ]
+              if target.get("shield"):
+                  cmake_args.append(f"-DSHIELD={target['shield']}")
+              cmake_args.extend(shlex.split(str(target.get("cmake-args", ""))))
+              print(f"Building {artifact}: {' '.join(command + ['--'] + cmake_args)}", flush=True)
+              try:
+                  subprocess.run(command + ["--"] + cmake_args, check=True)
+              except subprocess.CalledProcessError:
+                  kconfig_modules = build_dir / "Kconfig/Kconfig.modules"
+                  if kconfig_modules.is_file():
+                      lines = kconfig_modules.read_text().splitlines()
+                      print("Generated Kconfig.modules around the reported line:", flush=True)
+                      print("\n".join(lines[150:175]), flush=True)
+                  raise
+          PY
+
+      - name: Push buildable update to nemu-link
+        if: steps.merge.outputs.updated == 'true'
+        working-directory: candidate-zmk
+        run: git push origin HEAD:nemu-link
