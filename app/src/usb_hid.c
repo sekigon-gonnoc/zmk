@@ -97,6 +97,7 @@ static int get_report_cb(const struct device *dev, struct usb_setup_packet *setu
             *data = feature_report;
             break;
         }
+#if IS_ENABLED(CONFIG_ZMK_NEMU_LINK_CHANNEL_SURVEY)
         case ZMK_HID_REPORT_ID_NEMU_LINK_RF: {
             static uint8_t rf_report[NEMU_LINK_HID_RF_REPORT_SIZE];
             int rc = nemu_link_hid_rf_report_get(rf_report);
@@ -107,6 +108,7 @@ static int get_report_cb(const struct device *dev, struct usb_setup_packet *setu
             *data = rf_report;
             break;
         }
+#endif
 #endif
 #if IS_ENABLED(CONFIG_ZMK_POINTING_SMOOTH_SCROLLING)
         case ZMK_HID_REPORT_ID_MOUSE:
@@ -174,8 +176,10 @@ static int set_report_cb(const struct device *dev, struct usb_setup_packet *setu
 #ifdef CONFIG_ZMK_NEMU_LINK
         case ZMK_HID_REPORT_ID_NEMU_LINK_FEATURE:
             return nemu_link_hid_feature_report_set(*data, *len);
+#if IS_ENABLED(CONFIG_ZMK_NEMU_LINK_CHANNEL_SURVEY)
         case ZMK_HID_REPORT_ID_NEMU_LINK_RF:
             return nemu_link_hid_rf_report_set(*data, *len);
+#endif
 #endif
 #if IS_ENABLED(CONFIG_ZMK_POINTING_SMOOTH_SCROLLING)
         case ZMK_HID_REPORT_ID_MOUSE:
